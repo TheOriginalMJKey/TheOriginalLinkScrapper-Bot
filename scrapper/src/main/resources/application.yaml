@@ -1,0 +1,137 @@
+app:
+  link-age: 1
+  link-update-batch-size: 50
+  access-type: SQL
+  message-transport: KAFKA # or HTTP
+
+  link-updater-scheduler:
+    enable: true
+    interval: 300000  # 5 minutes
+    force-check-delay: 5000
+
+  github-client:
+    api: https://api.github.com
+    githubToken: ${"GIT_TOKEN"}
+    retry:
+      strategy: exponential
+      max-attempts: 3
+      backoff: 2000
+      max-backoff: 10000
+      codes: 403, 429, 503, 504
+    rate-limit:
+      max-requests-per-hour: 5000
+      max-requests-per-minute: 30
+    issues:
+      enabled: true
+      update-interval: PT5M
+    pull-requests:
+      enabled: true
+      update-interval: PT5M
+# для stackoverflow достаточно много запросов дают без авторизации
+  stackoverflow-client:
+    api: https://api.stackexchange.com/2.3
+    retry:
+      strategy: linear
+      max-attempts: 3
+      backoff: 2000
+      max-backoff: 10000
+      codes: 503, 504
+
+  bot-client:
+    api: http://localhost:8080
+    retry:
+      strategy: fixed
+      max-attempts: 3
+      backoff: 2000
+      codes: 429, 503, 504
+
+  link-sources:
+    github:
+      domain: github.com
+      handlers:
+        repository:
+          regex: /?(?<owner>[\w-]+)/(?<repo>[\w-]+)(/.*)?(\.git)?/?
+          handler: backend.academy.scrapper.handler.github.RepositoryHandler
+        branch:
+          regex: /?(?<owner>[\w-]+)/(?<repo>[\w-]+)/tree/(?<branch>[\w-\./]+)/?
+          handler: backend.academy.scrapper.handler.github.RepositoryBranchHandler
+        pull-request:
+          regex: /?(?<owner>[\w-]+)/(?<repo>[\w-]+)/pull/(?<num>\d+)/?.*
+          handler: backend.academy.scrapper.handler.github.PullRequestHandler
+        issue:
+          regex: /?(?<owner>[\w-]+)/(?<repo>[\w-]+)/issues/(?<num>\d+)/?.*
+          handler: backend.academy.scrapper.handler.github.IssueHandler
+    stackoverflow:
+      domain: stackoverflow.com
+      handlers:
+        question:
+          regex: /(?:questions|q)/(?<id>[\d]+)[/\w-\d]*
+          handler: backend.academy.scrapper.handler.stackoverflow.Question
+
+management:
+  health:
+    redis:
+      enabled: false
+
+spring:
+  messages:
+    basename: messages
+    encoding: UTF-8
+  application:
+    name: Scrapper
+  liquibase:
+    enabled: true
+    change-log: classpath:migrations/changelog/changelog-master.yml
+  jpa:
+    hibernate:
+      ddl-auto: update
+      dialect: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        show_sql: true
+  datasource:
+    url: jdbc:postgresql://localhost:5432/postgres
+    username: postgres
+    password: 123
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      idle-timeout: 30000
+      pool-name: ScrapperHikariCP
+      connection-timeout: 30000
+      connection-test-query: SELECT 1
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: scrapper-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+
+logging:
+  level:
+    root: INFO
+    backend.academy.scrapper: DEBUG
+    org.springframework.jdbc.core: DEBUG
+
+server:
+  port: 8081
+
+springdoc:
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui
+
+kafka:
+  topics:
+    updates: link-updates
+    notifications: link-notifications
+    dead-letter: dead-letter-queue
